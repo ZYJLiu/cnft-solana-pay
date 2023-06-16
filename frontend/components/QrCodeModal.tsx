@@ -16,11 +16,10 @@ interface Props {
 }
 
 const QrModal = ({ onClose }: Props) => {
-  const [confirmed, setConfirmed] = useState(false)
   const connection = new Connection(clusterApiUrl("devnet"))
   const qrRef = useRef<HTMLDivElement>(null)
   const [reference] = useState(Keypair.generate().publicKey)
-
+  const [confirmed, setConfirmed] = useState(false)
   const [size, setSize] = useState(() =>
     typeof window === "undefined" ? 100 : Math.min(window.outerWidth - 10, 512)
   )
@@ -32,26 +31,25 @@ const QrModal = ({ onClose }: Props) => {
   }, [])
 
   useEffect(() => {
-    const { location } = window
     const params = new URLSearchParams()
     params.append("reference", reference.toString())
 
-    const apiUrl = `${location.protocol}//${
-      location.host
-    }/api/mintCnft?${params.toString()}`
+    const apiUrl = `${window.location.protocol}//${
+      window.location.host
+    }/api/mintCnftSolanaPay?${params.toString()}`
     const urlParams: TransactionRequestURLFields = {
       link: new URL(apiUrl),
       label: "Label",
       message: "Message",
     }
     const solanaUrl = encodeURL(urlParams)
-    console.log(solanaUrl)
+    console.log(solanaUrl.href)
     const qr = createQR(solanaUrl, size, "white")
     if (qrRef.current) {
       qrRef.current.innerHTML = ""
       qr.append(qrRef.current)
     }
-  }, [window, size, reference])
+  }, [size, reference])
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -59,8 +57,11 @@ const QrModal = ({ onClose }: Props) => {
         const signatureInfo = await findReference(connection, reference, {
           finality: "confirmed",
         })
-        console.log(signatureInfo)
-        setConfirmed(true)
+        if (signatureInfo) {
+          console.log("Transaction confirmed", signatureInfo)
+          clearInterval(interval)
+          setConfirmed(true)
+        }
       } catch (e) {
         if (e instanceof FindReferenceError) return
         if (e instanceof ValidateTransferError) {

@@ -19,11 +19,16 @@ import {
 import { createMintV1Instruction } from "@metaplex-foundation/mpl-bubblegum"
 import { uris } from "../../utils/uri"
 
+// Tree address to mint the cNFTs to
+// This is the same address as the one output from script/src/index.ts
 const treeAddress = new PublicKey(
-  "BzmGuCAT2XduxZihakSpMfKCDFu31Sgrxtv23YJFD2EG"
+  process.env.NEXT_PUBLIC_TREE_ADDRESS as string
 )
+
+// Tree creator's keypair required to sign transactions
+// This is the same keypair as the one generated and used to create the tree from script/src/index.ts
 const treeCreator = Keypair.fromSecretKey(
-  new Uint8Array(JSON.parse(process.env.PRIVATE_KEY as string))
+  new Uint8Array(JSON.parse(process.env.TREE_CREATOR as string))
 )
 
 type InputData = {
@@ -35,12 +40,12 @@ type GetResponse = {
   icon: string
 }
 
-export type PostResponse = {
+type PostResponse = {
   transaction: string
   message: string
 }
 
-export type PostError = {
+type PostError = {
   error: string
 }
 
@@ -56,25 +61,22 @@ async function post(
   res: NextApiResponse<PostResponse | PostError>
 ) {
   const { account } = req.body as InputData
-  console.log(req.body)
-  if (!account) {
-    res.status(400).json({ error: "No account provided" })
-    return
-  }
-
   const { reference } = req.query
-  if (!reference) {
-    console.log("Returning 400: no reference")
-    res.status(400).json({ error: "No reference provided" })
+
+  console.log(req.body)
+
+  if (!account || !reference) {
+    const error = !account ? "No account provided" : "No reference provided"
+    res.status(400).json({ error })
     return
   }
 
   try {
-    const mintOutputData = await postImpl(
+    const responseData = await postImpl(
       new PublicKey(account),
       new PublicKey(reference)
     )
-    res.status(200).json(mintOutputData)
+    res.status(200).json(responseData)
     return
   } catch (error) {
     console.error(error)
@@ -91,7 +93,6 @@ async function postImpl(
 
   // Select a random URI from uris
   const randomUri = uris[Math.floor(Math.random() * uris.length)]
-  console.log("randomUri", randomUri)
 
   // Compressed NFT Metadata
   const compressedNFTMetadata: MetadataArgs = {
@@ -132,27 +133,30 @@ async function postImpl(
     }
   )
 
+  // Add the reference account as a read-only account
+  // The reference pubkey is used by Solana Pay to find transaction after it's sent
   instruction.keys.push({
     pubkey: reference,
     isSigner: false,
     isWritable: false,
   })
 
-  // Convert to transaction
+  // Get the latest blockhash
   const latestBlockhash = await connection.getLatestBlockhash()
 
-  // create new Transaction and add the instruction
+  // Create new Transaction and add the instruction
   const transaction = new Transaction({
     feePayer: account,
     blockhash: latestBlockhash.blockhash,
     lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
   }).add(instruction)
 
+  // Sign the transaction with the tree creator's keypair (default tree delegate, required as signer)
   transaction.sign(treeCreator)
 
   // Serialize the transaction and convert to base64 to return it
   const serializedTransaction = transaction.serialize({
-    requireAllSignatures: false, // account is a missing signature
+    requireAllSignatures: false, // account scanning is a missing signature, they will sign when approving from mobile wallet
   })
   const base64 = serializedTransaction.toString("base64")
 

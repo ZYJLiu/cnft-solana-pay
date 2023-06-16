@@ -8,6 +8,7 @@ import {
 } from "@chakra-ui/react"
 import WalletMultiButton from "@/components/WalletMultiButton"
 import QrModal from "../components/QrCodeModal"
+import MintCnft from "@/components/MintCnftButton"
 
 export default function Home() {
   const { isOpen, onOpen, onClose } = useDisclosure()
@@ -19,6 +20,7 @@ export default function Home() {
       </Flex>
       <VStack justifyContent="center">
         <Button onClick={onOpen}>Solana Pay Mint</Button>
+        <MintCnft />
         {isOpen && <QrModal onClose={onClose} />}
       </VStack>
     </Box>
