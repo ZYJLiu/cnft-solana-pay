@@ -1,7 +1,7 @@
+import { useEffect, useState } from "react"
 import { Button } from "@chakra-ui/react"
 import { Transaction } from "@solana/web3.js"
 import { useConnection, useWallet } from "@solana/wallet-adapter-react"
-import { useEffect, useState } from "react"
 
 export default function MintCnft() {
   const { publicKey, sendTransaction } = useWallet()
@@ -15,35 +15,39 @@ export default function MintCnft() {
     }
   }, [])
 
+  const buildTransaction = async () => {
+    if (!publicKey || !location) {
+      throw new Error("publicKey or location is not defined")
+    }
+
+    const apiUrl = `${location.protocol}//${location.host}/api/mintCnftClient`
+
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        account: publicKey.toBase58(),
+      }),
+    })
+
+    if (!response.ok) throw new Error("Failed to build transaction")
+
+    const data = await response.json()
+
+    return Transaction.from(Buffer.from(data.transaction, "base64"))
+  }
+
   const onClick = async () => {
-    if (!publicKey || !location) return
-
     try {
-      const apiUrl = `${location.protocol}//${location.host}/api/mintCnftClient`
+      const transaction = await buildTransaction()
 
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          account: publicKey.toBase58(),
-        }),
-      })
-
-      if (!response.ok) throw new Error("Failed to fetch the transaction data")
-
-      const data = await response.json()
-
-      const deserializedTransaction = Transaction.from(
-        Buffer.from(data.transaction, "base64")
-      )
-
-      await sendTransaction(deserializedTransaction, connection)
+      await sendTransaction(transaction, connection)
     } catch (error) {
       console.log(error)
     }
   }
 
-  return publicKey && <Button onClick={onClick}>Mint CNFT</Button>
+  return publicKey && <Button onClick={onClick}>Mint Compressed NFT</Button>
 }

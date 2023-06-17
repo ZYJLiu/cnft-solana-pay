@@ -31,36 +31,10 @@ const treeCreator = Keypair.fromSecretKey(
   new Uint8Array(JSON.parse(process.env.TREE_CREATOR as string))
 )
 
-type InputData = {
-  account: string
-}
-
-type PostError = {
-  error: string
-}
-
-type PostResponse = {
-  transaction: string
-}
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<PostResponse | PostError>
-) {
-  const { account } = req.body as InputData
-  const accountPubkey = new PublicKey(account)
-
-  if (!account) {
-    res.status(400).json({ error: "No account provided" })
-    return
-  }
-
+async function buildTransaction(account: PublicKey) {
   const connection = new Connection(clusterApiUrl("devnet"), "confirmed")
 
-  // Select a random URI from uris
   const randomUri = uris[Math.floor(Math.random() * uris.length)]
-
-  // Compressed NFT Metadata
   const compressedNFTMetadata: MetadataArgs = {
     name: "RGB",
     symbol: "RBG",
@@ -76,21 +50,19 @@ export default async function handler(
     tokenStandard: TokenStandard.NonFungible,
   }
 
-  // Derive the tree authority PDA ('TreeConfig' account for the tree account)
   const [treeAuthority] = PublicKey.findProgramAddressSync(
     [treeAddress.toBuffer()],
     BUBBLEGUM_PROGRAM_ID
   )
 
-  // Create the instruction to "mint" the compressed NFT to the tree
   const instruction = createMintV1Instruction(
     {
-      payer: accountPubkey, // The account that will pay for the transaction
-      merkleTree: treeAddress, // The address of the tree account
-      treeAuthority, // The authority of the tree account, should be a PDA derived from the tree account address
-      treeDelegate: treeCreator.publicKey, // The delegate of the tree account, tree creator by default, required as signer
-      leafOwner: accountPubkey, // The owner of the compressed NFT being minted to the tree
-      leafDelegate: accountPubkey, // The delegate of the compressed NFT being minted to the tree
+      payer: account,
+      merkleTree: treeAddress,
+      treeAuthority,
+      treeDelegate: treeCreator.publicKey,
+      leafOwner: account,
+      leafDelegate: account,
       compressionProgram: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
       logWrapper: SPL_NOOP_PROGRAM_ID,
     },
@@ -99,31 +71,37 @@ export default async function handler(
     }
   )
 
-  // Get the latest blockhash
   const latestBlockhash = await connection.getLatestBlockhash()
 
-  // Create new Transaction and add the instruction
   const transaction = new Transaction({
-    feePayer: accountPubkey,
+    feePayer: account,
     blockhash: latestBlockhash.blockhash,
     lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
   }).add(instruction)
 
-  // Sign the transaction with the tree creator's keypair (default tree delegate, required as signer)
   transaction.sign(treeCreator)
 
-  // Serialize the transaction and convert to base64 to return it
-  const serializedTransaction = transaction.serialize({
-    requireAllSignatures: false,
-  })
-  const base64 = serializedTransaction.toString("base64")
+  return transaction
+    .serialize({ requireAllSignatures: false })
+    .toString("base64")
+}
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  const { account } = req.body
+
+  if (!account) {
+    res.status(400).json({ error: "No account provided" })
+    return
+  }
 
   try {
-    // Just return the received publicKey
-    res.status(200).json({ transaction: base64 })
+    const transaction = await buildTransaction(new PublicKey(account))
+    res.status(200).json({ transaction })
   } catch (error) {
     console.error(error)
     res.status(500).json({ error: "Error processing request" })
-    return
   }
 }

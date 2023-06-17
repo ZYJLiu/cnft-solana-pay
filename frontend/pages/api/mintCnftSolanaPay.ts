@@ -31,70 +31,10 @@ const treeCreator = Keypair.fromSecretKey(
   new Uint8Array(JSON.parse(process.env.TREE_CREATOR as string))
 )
 
-type InputData = {
-  account: string
-}
-
-type GetResponse = {
-  label: string
-  icon: string
-}
-
-type PostResponse = {
-  transaction: string
-  message: string
-}
-
-type PostError = {
-  error: string
-}
-
-function get(res: NextApiResponse<GetResponse>) {
-  res.status(200).json({
-    label: "CNFT",
-    icon: "https://solana.com/src/img/branding/solanaLogoMark.svg",
-  })
-}
-
-async function post(
-  req: NextApiRequest,
-  res: NextApiResponse<PostResponse | PostError>
-) {
-  const { account } = req.body as InputData
-  const { reference } = req.query
-
-  console.log(req.body)
-
-  if (!account || !reference) {
-    const error = !account ? "No account provided" : "No reference provided"
-    res.status(400).json({ error })
-    return
-  }
-
-  try {
-    const responseData = await postImpl(
-      new PublicKey(account),
-      new PublicKey(reference)
-    )
-    res.status(200).json(responseData)
-    return
-  } catch (error) {
-    console.error(error)
-    res.status(500).json({ error: "error creating transaction" })
-    return
-  }
-}
-
-async function postImpl(
-  account: PublicKey,
-  reference: PublicKey
-): Promise<PostResponse> {
+async function buildTransaction(account: PublicKey, reference: PublicKey) {
   const connection = new Connection(clusterApiUrl("devnet"), "confirmed")
 
-  // Select a random URI from uris
   const randomUri = uris[Math.floor(Math.random() * uris.length)]
-
-  // Compressed NFT Metadata
   const compressedNFTMetadata: MetadataArgs = {
     name: "RGB",
     symbol: "RBG",
@@ -110,21 +50,19 @@ async function postImpl(
     tokenStandard: TokenStandard.NonFungible,
   }
 
-  // Derive the tree authority PDA ('TreeConfig' account for the tree account)
   const [treeAuthority] = PublicKey.findProgramAddressSync(
     [treeAddress.toBuffer()],
     BUBBLEGUM_PROGRAM_ID
   )
 
-  // Create the instruction to "mint" the compressed NFT to the tree
   const instruction = createMintV1Instruction(
     {
-      payer: account, // The account that will pay for the transaction
-      merkleTree: treeAddress, // The address of the tree account
-      treeAuthority, // The authority of the tree account, should be a PDA derived from the tree account address
-      treeDelegate: treeCreator.publicKey, // The delegate of the tree account, tree creator by default, required as signer
-      leafOwner: account, // The owner of the compressed NFT being minted to the tree
-      leafDelegate: account, // The delegate of the compressed NFT being minted to the tree
+      payer: account,
+      merkleTree: treeAddress,
+      treeAuthority,
+      treeDelegate: treeCreator.publicKey,
+      leafOwner: account,
+      leafDelegate: account,
       compressionProgram: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
       logWrapper: SPL_NOOP_PROGRAM_ID,
     },
@@ -133,45 +71,63 @@ async function postImpl(
     }
   )
 
-  // Add the reference account as a read-only account
-  // The reference pubkey is used by Solana Pay to find transaction after it's sent
   instruction.keys.push({
     pubkey: reference,
     isSigner: false,
     isWritable: false,
   })
 
-  // Get the latest blockhash
   const latestBlockhash = await connection.getLatestBlockhash()
 
-  // Create new Transaction and add the instruction
   const transaction = new Transaction({
     feePayer: account,
     blockhash: latestBlockhash.blockhash,
     lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
   }).add(instruction)
 
-  // Sign the transaction with the tree creator's keypair (default tree delegate, required as signer)
   transaction.sign(treeCreator)
 
-  // Serialize the transaction and convert to base64 to return it
-  const serializedTransaction = transaction.serialize({
-    requireAllSignatures: false, // account scanning is a missing signature, they will sign when approving from mobile wallet
-  })
-  const base64 = serializedTransaction.toString("base64")
+  return transaction
+    .serialize({ requireAllSignatures: false })
+    .toString("base64")
+}
 
-  const message = "Please approve the transaction to mint your NFT!"
+async function post(req: NextApiRequest, res: NextApiResponse) {
+  const { account } = req.body
+  const { reference } = req.query
 
-  // Return the serialized transaction
-  return {
-    transaction: base64,
-    message,
+  if (!account || !reference) {
+    res.status(400).json({
+      error: "Required data missing. Account or reference not provided.",
+    })
+    return
   }
+
+  try {
+    const transaction = await buildTransaction(
+      new PublicKey(account),
+      new PublicKey(reference)
+    )
+    res.status(200).json({
+      transaction,
+      message: "Please approve the transaction to mint your NFT!",
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: "Error processing request" })
+  }
+}
+
+function get(res: NextApiResponse) {
+  res.status(200).json({
+    label: "CNFT",
+    icon: "https://solana.com/src/img/branding/solanaLogoMark.svg",
+  })
 }
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<GetResponse | PostResponse | PostError>
+  res: NextApiResponse
 ) {
   if (req.method === "GET") {
     return get(res)

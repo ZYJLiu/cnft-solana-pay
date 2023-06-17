@@ -1,4 +1,6 @@
+import { useEffect, useRef, useState } from "react"
 import { Button, Flex, VStack } from "@chakra-ui/react"
+import { clusterApiUrl, Connection, Keypair } from "@solana/web3.js"
 import {
   createQR,
   encodeURL,
@@ -7,8 +9,6 @@ import {
   TransactionRequestURLFields,
   ValidateTransferError,
 } from "@solana/pay"
-import { clusterApiUrl, Connection, Keypair } from "@solana/web3.js"
-import { useEffect, useRef, useState } from "react"
 import Confirmed from "./Confirmed"
 
 interface Props {
@@ -75,7 +75,7 @@ const QrModal = ({ onClose }: Props) => {
       clearInterval(interval)
       setConfirmed(false)
     }
-  }, [reference.toString()])
+  }, [reference])
 
   return (
     <VStack
