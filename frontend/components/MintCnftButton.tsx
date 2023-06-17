@@ -1,17 +1,26 @@
 import { Button } from "@chakra-ui/react"
 import { Transaction } from "@solana/web3.js"
 import { useConnection, useWallet } from "@solana/wallet-adapter-react"
+import { useEffect, useState } from "react"
 
 export default function MintCnft() {
   const { publicKey, sendTransaction } = useWallet()
   const { connection } = useConnection()
 
-  const apiUrl = `${window.location.protocol}//${window.location.host}/api/mintCnftClient`
+  const [location, setLocation] = useState<Location | null>(null)
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setLocation(window.location)
+    }
+  }, [])
 
   const onClick = async () => {
-    if (!publicKey) return
+    if (!publicKey || !location) return
 
     try {
+      const apiUrl = `${location.protocol}//${location.host}/api/mintCnftClient`
+
       const response = await fetch(apiUrl, {
         method: "POST",
         headers: {
