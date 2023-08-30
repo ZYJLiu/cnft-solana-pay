@@ -272,7 +272,7 @@ export async function createTree(
     {
       maxBufferSize: maxDepthSizePair.maxBufferSize,
       maxDepth: maxDepthSizePair.maxDepth,
-      public: false,
+      public: true,
     },
     BUBBLEGUM_PROGRAM_ID
   );
